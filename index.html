@@ -773,11 +773,20 @@ async function sendChat() {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ contents: [{ parts: [{ text: context + "\n\nQuestion: " + txt }] }] })
     });
-    if(!res.ok) throw new Error("Erreur de l'API");
+    
     const data = await res.json();
+    
+    // Si Google renvoie une erreur, on l'affiche explicitement
+    if(!res.ok) {
+        throw new Error(data.error ? data.error.message : "Erreur HTTP " + res.status);
+    }
+    
     const rep = data.candidates[0].content.parts[0].text.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
     msgs.innerHTML += `<div class="msg msg-ai">${rep}</div>`;
-  } catch(e) { msgs.innerHTML += `<div class="msg msg-ai" style="color:var(--red)">Erreur API : Vérifie ta clé ou ton antivirus/réseau.</div>`; }
+  } catch(e) { 
+    // L'erreur exacte s'affichera en rouge dans le chat
+    msgs.innerHTML += `<div class="msg msg-ai" style="color:var(--red)">Détail du blocage Google : ${e.message}</div>`; 
+  }
   msgs.scrollTop = msgs.scrollHeight;
 }
 
