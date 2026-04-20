@@ -7,6 +7,10 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="NutriSport">
+<!-- Anti-cache pour forcer la mise à jour sur Safari -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <link rel="manifest" href="data:application/manifest+json;base64,eyJuYW1lIjoiTnV0cml0aW9uIFRyYWNrZXIiLCJzaG9ydF9uYW1lIjoiTnV0cmlUcmFja2VyIiwiZGlzcGxheSI6InN0YW5kYWxvbmUiLCJzdGFydF91cmwiOiIuIiwiYmFja2dyb3VuZF9jb2xvciI6IiMwNjA4MTAiLCJ0aGVtZV9jb2xvciI6IiMwNjA4MTAifQ==">
 <title>NutriSport Elite — Local Tracker & IA</title>
 <meta name="theme-color" content="#060810">
@@ -769,8 +773,8 @@ async function sendChat() {
   const context = `Tu es Coach NutriSport. Poids: ${profil?profil.poids:85.9}kg. Objectif: ${profil?profil.cible:2500}kcal. Mangé: ${totals(getJ(vDate)).kcal}kcal. Réponds court en français.`;
   
   try {
-    // Correction ici : v1 au lieu de v1beta, et ajout de -latest
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`, {
+    // API v1 avec gemini-1.5-flash
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ contents: [{ parts: [{ text: context + "\n\nQuestion: " + txt }] }] })
     });
@@ -784,7 +788,7 @@ async function sendChat() {
     const rep = data.candidates[0].content.parts[0].text.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
     msgs.innerHTML += `<div class="msg msg-ai">${rep}</div>`;
   } catch(e) { 
-    msgs.innerHTML += `<div class="msg msg-ai" style="color:var(--red)">Erreur : ${e.message}</div>`; 
+    msgs.innerHTML += `<div class="msg msg-ai" style="color:var(--red)">Erreur API : ${e.message}</div>`; 
   }
   msgs.scrollTop = msgs.scrollHeight;
 }
