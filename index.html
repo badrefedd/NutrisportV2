@@ -769,14 +769,14 @@ async function sendChat() {
   const context = `Tu es Coach NutriSport. Poids: ${profil?profil.poids:85.9}kg. Objectif: ${profil?profil.cible:2500}kcal. Mangé: ${totals(getJ(vDate)).kcal}kcal. Réponds court en français.`;
   
   try {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+    // Correction ici : v1 au lieu de v1beta, et ajout de -latest
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ contents: [{ parts: [{ text: context + "\n\nQuestion: " + txt }] }] })
     });
     
     const data = await res.json();
     
-    // Si Google renvoie une erreur, on l'affiche explicitement
     if(!res.ok) {
         throw new Error(data.error ? data.error.message : "Erreur HTTP " + res.status);
     }
@@ -784,8 +784,7 @@ async function sendChat() {
     const rep = data.candidates[0].content.parts[0].text.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
     msgs.innerHTML += `<div class="msg msg-ai">${rep}</div>`;
   } catch(e) { 
-    // L'erreur exacte s'affichera en rouge dans le chat
-    msgs.innerHTML += `<div class="msg msg-ai" style="color:var(--red)">Détail du blocage Google : ${e.message}</div>`; 
+    msgs.innerHTML += `<div class="msg msg-ai" style="color:var(--red)">Erreur : ${e.message}</div>`; 
   }
   msgs.scrollTop = msgs.scrollHeight;
 }
