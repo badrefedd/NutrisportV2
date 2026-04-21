@@ -235,6 +235,18 @@ input[type=checkbox]{width:auto;accent-color:var(--cyan);}
 .msg-user{align-self:flex-end; background:linear-gradient(135deg, rgba(167,139,250,.25), rgba(0,212,255,.18)); border:1px solid rgba(167,139,250,.22); border-bottom-right-radius:4px;}
 .chat-input{display:flex; gap:10px;}
 .chat-input input{flex-grow:1;}
+.msg-thinking{opacity:0.6; font-style:italic;}
+
+/* Bandeau configuration clé API */
+.api-key-banner{
+  display:none; align-items:center; gap:10px;
+  padding:10px 14px; margin-bottom:12px;
+  background:rgba(245,158,11,.08); border:1px solid rgba(245,158,11,.25);
+  border-radius:var(--rm); font-size:12.5px; color:var(--orange);
+}
+.api-key-banner.show{display:flex;}
+.api-key-banner input{flex:1; font-size:12.5px; padding:6px 10px;}
+.api-key-banner button{white-space:nowrap;}
 
 @media(max-width:880px){
   .app{grid-template-columns:1fr;}
@@ -420,10 +432,24 @@ input[type=checkbox]{width:auto;accent-color:var(--cyan);}
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════ COACH IA -->
 <div class="sec" id="tab-ia">
   <div class="ph"><div><div class="pt">Coach <em>IA</em></div><div class="ps">Direct API — Connecté à tes données locales</div></div></div>
+
+  <!-- Bandeau config clé API -->
+  <div class="api-key-banner" id="api-key-banner">
+    <span>🔑</span>
+    <input type="password" id="api-key-input" placeholder="Colle ta clé API Gemini (Google AI Studio)…">
+    <button class="btn btn-cy btn-sm" onclick="saveApiKey()">Enregistrer</button>
+    <button class="btn btn-ghost btn-sm" onclick="document.getElementById('api-key-banner').classList.remove('show')">✕</button>
+  </div>
+
   <div class="chat-msgs" id="chat-msgs">
     <div class="msg msg-ai">👋 Salut ! Je suis ton coach NutriSport IA. Interroge-moi sur tes repas, ton sport ou tes programmes d'entraînement.</div>
+  </div>
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+    <span style="font-size:11px; color:var(--t3)" id="ia-key-status"></span>
+    <button class="btn btn-ghost btn-sm" onclick="changeApiKey()" style="font-size:11px; color:var(--t3)">🔑 Changer la clé API</button>
   </div>
   <div class="chat-input">
     <input type="text" id="ia-input" placeholder="Pose ta question..." onkeydown="if(event.key==='Enter') sendChat()">
@@ -629,7 +655,7 @@ function goTo(name){
   if(name==='semaine')renderSemaine();
   if(name==='activites'){syncAct();renderActivites();}
   if(name==='training')renderTraining();
-  if(name==='ia') setTimeout(()=>document.getElementById('ia-input').focus(), 100);
+  if(name==='ia'){updIAKeyStatus(); setTimeout(()=>document.getElementById('ia-input').focus(), 100);}
 }
 
 function changeDay(delta){ const nd=new Date(vDate);nd.setDate(nd.getDate()+delta); if(nd>TODAY)return;vDate=nd;updDN();filtrer();renderJournal(); }
@@ -761,38 +787,123 @@ function importPlanJSON(){ try { PLANS[wMode] = JSON.parse(document.getElementBy
 function resetPlanJSON(){ PLANS = JSON.parse(JSON.stringify(DEFAULT_PLANS)); localStorage.setItem('nutri_plans', JSON.stringify(PLANS)); renderTraining(); }
 
 // ╔══════════════════════════════════════════════════════════╗
-// ║  IA CHAT (DIRECT API VIA GITHUB)                        ║
+// ║  IA CHAT — GEMINI 2.0 FLASH (clé stockée localement)   ║
 // ╚══════════════════════════════════════════════════════════╝
-const GEMINI_API_KEY = 'AIzaSyAzRszbHgugreOS_Y0Q4_i-jdRPALVqNBk';
+
+// La clé n'est JAMAIS en dur dans le code.
+// Elle est stockée dans localStorage sous 'gemini_api_key'.
+// Le bandeau de config s'affiche automatiquement si aucune clé n'est trouvée.
+
+function getApiKey() {
+  return localStorage.getItem('gemini_api_key') || '';
+}
+
+function saveApiKey() {
+  const val = document.getElementById('api-key-input').value.trim();
+  if (!val) return;
+  localStorage.setItem('gemini_api_key', val);
+  document.getElementById('api-key-banner').classList.remove('show');
+  updIAKeyStatus();
+}
+
+function changeApiKey() {
+  localStorage.removeItem('gemini_api_key');
+  document.getElementById('api-key-input').value = '';
+  document.getElementById('api-key-banner').classList.add('show');
+  updIAKeyStatus();
+}
+
+function updIAKeyStatus() {
+  const key = getApiKey();
+  const statusEl = document.getElementById('ia-key-status');
+  if (key) {
+    statusEl.textContent = '🟢 Clé API configurée';
+    statusEl.style.color = 'var(--green)';
+    document.getElementById('api-key-banner').classList.remove('show');
+  } else {
+    statusEl.textContent = '🔴 Aucune clé API — configure-la ci-dessous';
+    statusEl.style.color = 'var(--red)';
+    document.getElementById('api-key-banner').classList.add('show');
+  }
+}
 
 async function sendChat() {
-  const input = document.getElementById('ia-input'); const txt = input.value.trim(); if(!txt) return;
-  const msgs = document.getElementById('chat-msgs');
-  msgs.innerHTML += `<div class="msg msg-user">${txt}</div>`; input.value = ''; msgs.scrollTop = msgs.scrollHeight;
+  const input = document.getElementById('ia-input');
+  const txt = input.value.trim();
+  if (!txt) return;
 
-  const context = `Tu es Coach NutriSport. Poids: ${profil?profil.poids:85.9}kg. Objectif: ${profil?profil.cible:2500}kcal. Mangé: ${totals(getJ(vDate)).kcal}kcal. Réponds court en français.`;
-  
-try {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": GEMINI_API_KEY
-      },
-      body: JSON.stringify({ contents: [{ parts: [{ text: context + "\n\nQuestion: " + txt }] }] })
-    });
-    
-    const data = await res.json();
-    
-    if(!res.ok) {
-        throw new Error(data.error ? data.error.message : "Erreur HTTP " + res.status);
-    }
-    
-    const rep = data.candidates[0].content.parts[0].text.replace(/\n/g, '<br>').replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
-    msgs.innerHTML += `<div class="msg msg-ai">${rep}</div>`;
-  } catch(e) { 
-    msgs.innerHTML += `<div class="msg msg-ai" style="color:var(--red)">Erreur API : ${e.message}</div>`; 
+  const key = getApiKey();
+  if (!key) {
+    document.getElementById('api-key-banner').classList.add('show');
+    document.getElementById('api-key-input').focus();
+    return;
   }
+
+  const msgs = document.getElementById('chat-msgs');
+
+  // Message utilisateur
+  msgs.innerHTML += `<div class="msg msg-user">${txt}</div>`;
+  input.value = '';
+
+  // Indicateur de frappe
+  const thinkId = 'think-' + Date.now();
+  msgs.innerHTML += `<div class="msg msg-ai msg-thinking" id="${thinkId}">⏳ Réflexion en cours…</div>`;
+  msgs.scrollTop = msgs.scrollHeight;
+
+  // Contexte nutritionnel injecté
+  const tot = totals(getJ(vDate));
+  const context = [
+    'Tu es Coach NutriSport, un coach nutrition et sport expert.',
+    `Profil utilisateur : poids ${profil ? profil.poids : '?'}kg, objectif ${profil ? profil.cible : '?'} kcal/jour.`,
+    `Aujourd'hui : ${tot.kcal} kcal mangées, ${tot.p}g protéines, ${tot.g}g glucides, ${tot.l}g lipides.`,
+    'Réponds toujours en français, de façon concise et pratique.'
+  ].join(' ');
+
+  try {
+    const res = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': key
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{ text: context + '\n\nQuestion : ' + txt }]
+          }]
+        })
+      }
+    );
+
+    const data = await res.json();
+
+    // Supprime l'indicateur de frappe
+    const thinkEl = document.getElementById(thinkId);
+    if (thinkEl) thinkEl.remove();
+
+    if (!res.ok) {
+      const errMsg = data.error ? data.error.message : 'Erreur HTTP ' + res.status;
+      // Si la clé est invalide/révoquée, on propose d'en changer une
+      if (res.status === 400 || res.status === 403) {
+        msgs.innerHTML += `<div class="msg msg-ai" style="color:var(--red)">❌ Clé API invalide ou expirée.<br><small>${errMsg}</small></div>`;
+        changeApiKey();
+      } else {
+        msgs.innerHTML += `<div class="msg msg-ai" style="color:var(--orange)">⚠️ Erreur API : ${errMsg}</div>`;
+      }
+    } else {
+      const rep = data.candidates[0].content.parts[0].text
+        .replace(/\n/g, '<br>')
+        .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+      msgs.innerHTML += `<div class="msg msg-ai">${rep}</div>`;
+    }
+
+  } catch (e) {
+    const thinkEl = document.getElementById(thinkId);
+    if (thinkEl) thinkEl.remove();
+    msgs.innerHTML += `<div class="msg msg-ai" style="color:var(--red)">❌ Erreur réseau : ${e.message}</div>`;
+  }
+
   msgs.scrollTop = msgs.scrollHeight;
 }
 
