@@ -7,7 +7,6 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="NutriSport">
-<!-- Anti-cache pour forcer la mise à jour sur Safari -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -233,11 +232,11 @@ input[type=checkbox]{width:auto;accent-color:var(--cyan);}
 .msg{max-width:85%; padding:12px 16px; border-radius:14px; font-size:14px; line-height:1.5;}
 .msg-ai{align-self:flex-start; background:rgba(255,255,255,0.05); border:1px solid var(--b2); border-bottom-left-radius:4px;}
 .msg-user{align-self:flex-end; background:linear-gradient(135deg, rgba(167,139,250,.25), rgba(0,212,255,.18)); border:1px solid rgba(167,139,250,.22); border-bottom-right-radius:4px;}
-.chat-input{display:flex; gap:10px;}
-.chat-input input{flex-grow:1;}
+.chat-input{display:flex; gap:8px; align-items:center; background:rgba(255,255,255,0.03); padding:8px; border-radius:var(--rm); border:1px solid var(--b1);}
+.chat-input input[type=text]{flex-grow:1; border:none; background:transparent; padding:8px;}
+.chat-input input[type=text]:focus{border:none; background:transparent;}
 .msg-thinking{opacity:0.6; font-style:italic;}
 
-/* Bandeau configuration clé API */
 .api-key-banner{
   display:none; align-items:center; gap:10px;
   padding:10px 14px; margin-bottom:12px;
@@ -360,6 +359,12 @@ input[type=checkbox]{width:auto;accent-color:var(--cyan);}
     <div class="dnav"><button onclick="changeDay(-1)">←</button><span class="dlbl" id="day-lbl"></span><button onclick="changeDay(1)" id="btn-next">→</button></div>
   </div>
   <div class="card">
+    <div class="clbl">Ajout magique par IA</div>
+    <button class="btn btn-sp" style="width:100%; border-color:var(--cyan); color:var(--cyan); background:rgba(0,212,255,0.05);" onclick="goTo('ia')">
+      📸 Photographier ou décrire un repas
+    </button>
+  </div>
+  <div class="card">
     <div class="clbl cy">Rechercher — DB (400+ produits)</div>
     <div class="sw"><span class="si">⌕</span><input type="text" id="food-in" placeholder="Rechercher..." oninput="filtrer()"></div>
     <div class="fres" id="fres"></div>
@@ -436,7 +441,6 @@ input[type=checkbox]{width:auto;accent-color:var(--cyan);}
 <div class="sec" id="tab-ia">
   <div class="ph"><div><div class="pt">Coach <em>IA</em></div><div class="ps">Direct API — Connecté à tes données locales</div></div></div>
 
-  <!-- Bandeau config clé API -->
   <div class="api-key-banner" id="api-key-banner">
     <span>🔑</span>
     <input type="password" id="api-key-input" placeholder="Colle ta clé API Gemini (Google AI Studio)…">
@@ -445,15 +449,20 @@ input[type=checkbox]{width:auto;accent-color:var(--cyan);}
   </div>
 
   <div class="chat-msgs" id="chat-msgs">
-    <div class="msg msg-ai">👋 Salut ! Je suis ton coach NutriSport IA. Interroge-moi sur tes repas, ton sport ou tes programmes d'entraînement.</div>
+    <div class="msg msg-ai">👋 Salut ! Je suis ton coach NutriSport IA. Interroge-moi ou envoie la photo de ton plat pour l'analyser.</div>
   </div>
   <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
     <span style="font-size:11px; color:var(--t3)" id="ia-key-status"></span>
     <button class="btn btn-ghost btn-sm" onclick="changeApiKey()" style="font-size:11px; color:var(--t3)">🔑 Changer la clé API</button>
   </div>
   <div class="chat-input">
-    <input type="text" id="ia-input" placeholder="Pose ta question..." onkeydown="if(event.key==='Enter') sendChat()">
+    <input type="file" id="ia-image" accept="image/*" capture="environment" style="display:none" onchange="previewImage()">
+    <button class="btn btn-ghost" onclick="document.getElementById('ia-image').click()" id="ia-img-btn" style="padding:8px; font-size:18px;">📸</button>
+    <input type="text" id="ia-input" placeholder="Message ou photo du plat..." onkeydown="if(event.key==='Enter') sendChat()">
     <button class="btn btn-cy" onclick="sendChat()">Envoyer</button>
+  </div>
+  <div id="ia-img-preview" style="display:none; margin-top:8px; font-size:12px; color:var(--cyan); padding-left:10px;">
+    📸 Image attachée <button class="btn btn-xs btn-ghost" onclick="removeImage()" style="margin-left:10px;">✕ Retirer</button>
   </div>
 </div>
 
@@ -787,12 +796,8 @@ function importPlanJSON(){ try { PLANS[wMode] = JSON.parse(document.getElementBy
 function resetPlanJSON(){ PLANS = JSON.parse(JSON.stringify(DEFAULT_PLANS)); localStorage.setItem('nutri_plans', JSON.stringify(PLANS)); renderTraining(); }
 
 // ╔══════════════════════════════════════════════════════════╗
-// ║  IA CHAT — GEMINI 2.0 FLASH (clé stockée localement)   ║
+// ║  IA CHAT & GESTION DES IMAGES                           ║
 // ╚══════════════════════════════════════════════════════════╝
-
-// La clé n'est JAMAIS en dur dans le code.
-// Elle est stockée dans localStorage sous 'gemini_api_key'.
-// Le bandeau de config s'affiche automatiquement si aucune clé n'est trouvée.
 
 function getApiKey() {
   return localStorage.getItem('gemini_api_key') || '';
@@ -827,10 +832,38 @@ function updIAKeyStatus() {
   }
 }
 
+// Variables pour stocker temporairement l'image
+let pendingImageBase64 = null;
+let pendingImageMimeType = null;
+
+function previewImage() {
+  const file = document.getElementById('ia-image').files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onloadend = () => {
+    const result = reader.result;
+    pendingImageBase64 = result.split(',')[1];
+    pendingImageMimeType = file.type;
+    document.getElementById('ia-img-preview').style.display = 'block';
+    document.getElementById('ia-img-btn').style.color = 'var(--cyan)';
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeImage() {
+  pendingImageBase64 = null;
+  pendingImageMimeType = null;
+  document.getElementById('ia-image').value = '';
+  document.getElementById('ia-img-preview').style.display = 'none';
+  document.getElementById('ia-img-btn').style.color = 'var(--t1)';
+}
+
 async function sendChat() {
   const input = document.getElementById('ia-input');
   const txt = input.value.trim();
-  if (!txt) return;
+  
+  // Refus si ni texte ni image
+  if (!txt && !pendingImageBase64) return;
 
   const key = getApiKey();
   if (!key) {
@@ -842,7 +875,9 @@ async function sendChat() {
   const msgs = document.getElementById('chat-msgs');
 
   // Message utilisateur
-  msgs.innerHTML += `<div class="msg msg-user">${txt}</div>`;
+  let userHtml = txt || "Analyse ce repas 📸";
+  if (pendingImageBase64) userHtml += " 📸";
+  msgs.innerHTML += `<div class="msg msg-user">${userHtml}</div>`;
   input.value = '';
 
   // Indicateur de frappe
@@ -850,14 +885,31 @@ async function sendChat() {
   msgs.innerHTML += `<div class="msg msg-ai msg-thinking" id="${thinkId}">⏳ Réflexion en cours…</div>`;
   msgs.scrollTop = msgs.scrollHeight;
 
-  // Contexte nutritionnel injecté
+  // Préparation du payload
   const tot = totals(getJ(vDate));
   const context = [
     'Tu es Coach NutriSport, un coach nutrition et sport expert.',
     `Profil utilisateur : poids ${profil ? profil.poids : '?'}kg, objectif ${profil ? profil.cible : '?'} kcal/jour.`,
     `Aujourd'hui : ${tot.kcal} kcal mangées, ${tot.p}g protéines, ${tot.g}g glucides, ${tot.l}g lipides.`,
-    'Réponds toujours en français, de façon concise et pratique.'
+    'Réponds toujours en français, de façon concise et pratique.',
+    'IMPORTANT : Si la question porte sur les valeurs nutritionnelles d\'un aliment (calories, protéines, glucides, lipides), ou si on te soumet la photo d\'un plat, tu DOIS terminer ta réponse par un bloc JSON sur une seule ligne, exactement dans ce format (remplace les valeurs) :',
+    'NUTRI_ADD:{"n":"Nom aliment","k":000,"p":00,"g":00,"l":00,"qty":"100g"}',
+    'Ce bloc doit apparaître en toute fin de réponse, après le texte, sur sa propre ligne. Ne le mets pas dans du markdown. Si la question ne concerne pas les valeurs nutritionnelles d\'un aliment précis, n\'inclus PAS ce bloc.'
   ].join(' ');
+
+  const payloadParts = [{ text: context + '\n\nQuestion : ' + (txt || "Analyse l'image et donne moi les valeurs nutritionnelles pour l'ajouter au journal.") }];
+  
+  // Ajout de l'image si elle existe
+  if (pendingImageBase64) {
+    payloadParts.push({
+      inlineData: {
+        data: pendingImageBase64,
+        mimeType: pendingImageMimeType
+      }
+    });
+    // On nettoie l'image après envoi
+    removeImage();
+  }
 
   try {
     const res = await fetch(
@@ -869,9 +921,7 @@ async function sendChat() {
           'x-goog-api-key': key
         },
         body: JSON.stringify({
-          contents: [{
-            parts: [{ text: context + '\n\nQuestion : ' + txt }]
-          }]
+          contents: [{ parts: payloadParts }]
         })
       }
     );
@@ -884,18 +934,50 @@ async function sendChat() {
 
     if (!res.ok) {
       const errMsg = data.error ? data.error.message : 'Erreur HTTP ' + res.status;
-      // Si la clé est invalide/révoquée, on propose d'en changer une
       if (res.status === 400 || res.status === 403) {
-        msgs.innerHTML += `<div class="msg msg-ai" style="color:var(--red)">❌ Clé API invalide ou expirée.<br><small>${errMsg}</small></div>`;
+        msgs.innerHTML += `<div class="msg msg-ai" style="color:var(--red)">❌ Clé API invalide ou modèle incorrect.<br><small>${errMsg}</small></div>`;
         changeApiKey();
       } else {
         msgs.innerHTML += `<div class="msg msg-ai" style="color:var(--orange)">⚠️ Erreur API : ${errMsg}</div>`;
       }
     } else {
-      const rep = data.candidates[0].content.parts[0].text
+      let fullText = data.candidates[0].content.parts[0].text;
+
+      // Détecte le bloc NUTRI_ADD en fin de réponse
+      const nutriMatch = fullText.match(/NUTRI_ADD:(\{.*?\})/);
+      let nutriData = null;
+      if (nutriMatch) {
+        try {
+          nutriData = JSON.parse(nutriMatch[1]);
+          // Retire le bloc JSON du texte affiché
+          fullText = fullText.replace(/NUTRI_ADD:\{.*?\}/, '').trim();
+        } catch(e) { nutriData = null; }
+      }
+
+      // Formate le texte
+      const rep = fullText
         .replace(/\n/g, '<br>')
         .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
-      msgs.innerHTML += `<div class="msg msg-ai">${rep}</div>`;
+
+      // Bouton d'ajout si données nutritionnelles détectées
+      let addBtn = '';
+      if (nutriData) {
+        const safeData = JSON.stringify(nutriData).replace(/'/g, "\\'");
+        addBtn = `
+          <div style="margin-top:10px;padding:10px 12px;background:rgba(0,212,255,0.07);border:1px solid rgba(0,212,255,0.2);border-radius:8px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+            <div style="font-size:12px;color:var(--t2);">
+              <span style="color:var(--cyan);font-weight:600;">${nutriData.n}</span>
+              &nbsp;·&nbsp;${nutriData.qty}
+              &nbsp;·&nbsp;<span style="color:var(--prot)">${nutriData.k} kcal</span>
+              &nbsp;·&nbsp;P: ${nutriData.p}g &nbsp;G: ${nutriData.g}g &nbsp;L: ${nutriData.l}g
+            </div>
+            <button class="btn btn-cy btn-sm" onclick='addNutriFromIA(${JSON.stringify(nutriData)})'>
+              ✦ Ajouter au journal
+            </button>
+          </div>`;
+      }
+
+      msgs.innerHTML += `<div class="msg msg-ai">${rep}${addBtn}</div>`;
     }
 
   } catch (e) {
@@ -904,6 +986,29 @@ async function sendChat() {
     msgs.innerHTML += `<div class="msg msg-ai" style="color:var(--red)">❌ Erreur réseau : ${e.message}</div>`;
   }
 
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+// Ajoute l'aliment suggéré par l'IA directement au journal du jour
+function addNutriFromIA(nutriData) {
+  const j = getJ(vDate);
+  j.push({
+    n: nutriData.n,
+    qty: nutriData.qty || '100g',
+    kcal: Math.round(nutriData.k),
+    p: Math.round((nutriData.p || 0) * 10) / 10,
+    g: Math.round((nutriData.g || 0) * 10) / 10,
+    l: Math.round((nutriData.l || 0) * 10) / 10,
+    h: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+  });
+  saveJ(vDate, j);
+  renderJournal();
+  renderBilan();
+  updSB();
+
+  // Feedback visuel dans le chat
+  const msgs = document.getElementById('chat-msgs');
+  msgs.innerHTML += `<div class="msg msg-ai" style="border-color:rgba(32,212,160,0.3)">✅ <b>${nutriData.n}</b> ajouté au journal du jour !</div>`;
   msgs.scrollTop = msgs.scrollHeight;
 }
 
